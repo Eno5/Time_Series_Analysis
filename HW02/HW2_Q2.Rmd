@@ -1,0 +1,176 @@
+---
+title: "ISYE 6402 Homework 2 Q2"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+# Background
+
+In this problem, we will analyze aggregated temperature data.
+
+Data *LA Temp Monthly.csv* contains the monthly average temperature of Los Angeles from January 1950 through December 2018. Run the following code to prepare the data for analysis:
+
+## Instructions on reading the data
+
+To read the data in `R`, save the file in your working directory (make sure you have changed the directory if different from the R working directory) and read the data using the `R` function `read.csv()`
+
+You will perform the analysis and modelling on the `Temp` data column.
+
+```{r read data}
+
+fpath <- "LA Temp Monthly.csv"
+df <- read.csv(fpath, head = TRUE)
+
+```
+
+Here are the libraries you will need:
+
+```{r library}
+
+library(mgcv)
+library(TSA)
+library(dynlm)
+
+```
+
+Run the following code to prepare the data for analysis:
+
+```{r clean data}
+
+df$Date <- as.Date(paste0(df$Date, "01"), format = "%Y%m%d")
+temp <- ts(df$Temp, start = 1950, freq = 12)
+
+datenum <- ts(df$Date)
+
+```
+  
+
+# Question 2a: Exploratory Data Analysis
+
+Plot both the Time Series and ACF plots. Comment on the main features, and identify what (if any) assumptions of stationarity are violated. Additionally, comment if you believe the differenced data is more appropriate for use in fitting the data. Support your response with a graphical analysis.
+
+**Hint:** Make sure to use the appropriate differenced data. 
+
+```{r original time series}
+time.pts = c(1:length(temp))
+time.pts = c(time.pts - min(time.pts))/max(time.pts)
+
+# Moving Average
+mav.fit = ksmooth(time.pts, temp, kernel="box")
+temp.fit.mav = ts(mav.fit$y, start = 1950, freq = 12)
+
+ts.plot(temp, ylab="LA Temp")
+lines(temp.fit.mav,lwd=2,col="purple")
+abline(temp.fit.mav[1],0,lwd=2,col="blue")
+
+# ACF Plot
+acf(temp, lag.max=12*6)
+
+```
+*Response: Comments about the time series and ACF plots of the original time series*
+The first chart indicates a non-constant mean (moving average has an upward trend) and the ACF plot shows seasonality (time dependent autocorrelation). Both of these violate stationarity assumptions.
+
+```{r differenced time series}
+diff.temp = diff(temp, lag=12)
+
+time.pts = c(2:length(temp))
+time.pts = c(time.pts - min(time.pts))/max(time.pts)
+
+# Moving Average
+mav.fit = ksmooth(time.pts, diff.temp, kernel="box")
+temp.fit.mav = ts(mav.fit$y, start = 1950, freq = 12)
+
+ts.plot(diff.temp, ylab="Differenced LA Temp")
+lines(temp.fit.mav,lwd=2,col="purple")
+abline(temp.fit.mav[1],0,lwd=2,col="blue")
+
+# ACF Plot
+acf(diff.temp, lag.max=12*6)
+```
+
+*Response: Comments about the time series and ACF plots of the difference time series*
+Using a difference with a lag of 12 periods brings the process closer to stationarity. The original data is better for fitting the seasonality.
+
+
+# Question 2b: Seasonality Estimation
+
+Separately fit a seasonality harmonic model and the ANOVA seasonality model to the temperature data. Evaluate the quality of each fit with residual analysis. Does one model perform better than the other? Which model would you select to fit the seasonality in the data?
+
+```{r seasonality estimation}
+time.pts = c(1:length(temp))
+
+# Models
+harm.model = dynlm(temp ~ harmon(temp))
+anova.model = dynlm(temp ~ time.pts + season(temp))
+
+# Residuals
+diff.fit.harm = ts(temp - fitted(harm.model), start = 1950, freq = 12)
+diff.fit.anova = ts(temp - fitted(anova.model), start = 1950, freq = 12)
+
+ts.plot(diff.fit.harm,lwd=2,col="purple", ylab="Residual Process")
+lines(diff.fit.anova,lwd=2,col="green")
+
+```
+
+*Response: Compare Seasonality Models*
+
+The better fitting model is ANOVA - its residuals have the smaller amplitude. Additionally, the residuals for the harmonic model increase over time. I would recommend using ANOVA for seasonality.
+
+# Question 2c: Trend-Seasonality Estimation
+
+Using the time series data, fit the following models to estimate the trend with seasonality fitted using ANOVA:
+
+- Parametric Polynomial Regression
+
+- Non-parametric model
+
+Overlay the fitted values on the original time series. Plot the residuals with respect to time. Plot the ACF of the residuals. Comment on how the two models fit and on the appropriateness of the stationarity assumption of the residuals.
+
+What form of modelling seems most appropriate and what implications might this have for how one might expect long term temperature data to behave? Provide explicit conclusions based on the data analysis.
+
+```{r trend seasonality estimation}
+time.pts = c(1:length(temp))
+
+# Parametric Polynomial
+lm.fit = dynlm(temp ~ time.pts + season(temp))
+temp.fit.lm = ts(fitted(lm.fit), start = 1950, freq = 12)
+
+# Splines
+gam.fit = gam(temp ~ s(time.pts) + season(temp))
+temp.fit.gam = ts(fitted(gam.fit), start = 1950, freq = 12)
+
+
+ts.plot(temp, ylab="LA Temp")
+lines(temp.fit.lm,lwd=2,col="red")
+lines(temp.fit.gam,lwd=2,col="green")
+
+# Residuals
+diff.fit.lm = ts(temp - temp.fit.lm, start = 1950, freq = 12)
+diff.fit.loc = ts(temp - temp.fit.gam, start = 1950, freq = 12)
+
+ts.plot(diff.fit.lm,lwd=2,col="red", ylab="Residual Process")
+lines(diff.fit.loc,lwd=2,col="green")
+
+# ACF plots
+acf(diff.fit.lm, lag.max=12*6)
+acf(diff.fit.loc, lag.max=12*6)
+
+```
+
+*Response: Model Comparison*
+Both models are good fits, but the splines model with seasonality appears to be a better fit (the parametric model has more extreme residuals after 2000). The residuals fit the stationarity assumptions - constant mean, finite variance, and weak autocorrelation. The splines model appears more appropriate.
+
+We can see a general upwards trend, but it's not completely linear. From looking at the hottest and coldest months, we can see some years are cooler than the previous year. This is likely what we can expect in the future as well.

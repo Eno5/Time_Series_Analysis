@@ -1,0 +1,300 @@
+---
+title: "ISYE 6402 Homework 4"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+# Background
+
+For this data analysis, you will again analyze the currency exchange data but to a greater extent and including two different currencies for comparison. File *DailyCurrencyData.csv* contains the *daily* exchange rate of EUR/USD and GBP/USD from January 1999 through December 31st 2020. File *MonthlyCurrencyData.csv* contains the *monthly* exchange rate of EUR/USD and GBP/USD for the same time period. Similarly to homework 2, we will aggregate the daily data into weekly data. We will compare our analysis using ARMA modeling on both weekly and monthly data for the two currencies.
+
+
+```{r library}
+
+library(zoo)
+library(lubridate)
+library(mgcv)
+
+```
+
+# Instructions on reading the data
+
+To read the data in `R`, save the file in your working directory (make sure you have changed the directory if different from the R working directory) and read the data using the `R` function `read.csv()`
+
+```{r load data}
+
+daily <- read.csv("DailyCurrencyData.csv", head = TRUE)
+monthly <- read.csv("MonthlyCurrencyData.csv", head = TRUE)
+
+daily$Date <- as.Date(daily$Date, "%m/%d/%Y")
+monthly$Date <- as.Date(paste0(monthly$Date, "-01"), "%Y-%m-%d")
+colnames(monthly) <- colnames(daily)
+
+```
+
+
+# Question 1. Weekly vs Monthly Exploratory Data Analysis (20 points)
+
+**1a.** Based on your intuition, when would you use weekly instead of monthly time series data?
+
+*Response*
+We would use weekly data when we are trying to understand weekly trends and/or forecast on a weekly basis. Monthly data wouldn't be granular enough for that analysis.
+
+**1b.** Plot the time series plots for both currency exchange rates comparing weekly vs monthly data. How do the weekly and monthly time series data compare? How do the time series for the two currencies compare?
+
+```{r aggregate data}
+
+daily <- na.locf(daily)
+
+weekly <- daily
+weekly$Date <- floor_date(weekly$Date, "week")
+weekly <- aggregate(weekly[, 2:3], by = list(weekly$Date), FUN = mean)
+colnames(weekly)[1] <- "Date"
+
+
+weekly.TS = ts(weekly[-1], start = 1999, freq = 52)
+monthly.TS = ts(monthly[-1], start = 1999, freq = 12)
+
+plot(weekly.TS, plot.type="single", col=1:ncol(weekly.TS), ylab="Weekly USD Exchange Rate")
+legend("topright", colnames(weekly.TS), col=1:ncol(weekly.TS), lty=1)
+
+
+plot(monthly.TS, plot.type="single", col=1:ncol(monthly.TS), ylab="Monthly USD Exchange Rate")
+legend("topright", colnames(weekly.TS), col=1:ncol(monthly.TS), lty=1)
+
+```
+*Response: Weekly vs Montly Time Series data comparison*
+The monthly data captures the overall trend from the weekly data. There is more noise in the week-to-week prices vs monthly, which makes sense as the weekly is a shorter time period and there is more volatility.
+
+**1c.** Fit a non-parametric trend using splines regression to both the weekly and monthly time series data for both currencies. Overlay the fitted trends for each of the currency separately. How do the trends compare when comparing those fitted using the weekly and monthly data? How do the trends for the two currencies compare?
+
+```{r non-parametric trend}
+# Weekly spline fit
+time.pts = c(1:length(weekly.TS[, 'EUR']))
+
+eur.gam.fit = gam(weekly.TS[, 'EUR']~s(time.pts))
+weekly.eur.fit.gam = ts(fitted(eur.gam.fit), start = 1999, freq = 52)
+ts.plot(weekly.eur.fit.gam,lwd=2,col="purple", ylab="EUR/USD Weekly Rate", ylim=c(0.75,2))
+lines(weekly.TS[, 'EUR'],lwd=2,col="blue")
+
+gbp.gam.fit = gam(weekly.TS[, 'GBP']~s(time.pts))
+weekly.gbp.fit.gam = ts(fitted(gbp.gam.fit), start = 1999, freq = 52)
+ts.plot(weekly.gbp.fit.gam,lwd=2,col="purple", ylab="GBP/USD Monthly Rate", ylim=c(0.75,2))
+lines(weekly.TS[, 'GBP'],lwd=2,col="blue")
+
+
+
+# Monthly spline fit
+time.pts = c(1:length(monthly.TS[, 'EUR']))
+
+eur.gam.fit = gam(monthly.TS[, 'EUR']~s(time.pts))
+monthly.eur.fit.gam = ts(fitted(eur.gam.fit), start = 1999, freq = 12)
+ts.plot(monthly.eur.fit.gam,lwd=2,col="purple", ylab="EUR/USD Monthly Rate", ylim=c(0.75,2))
+lines(monthly.TS[, 'EUR'],lwd=2,col="blue")
+
+gbp.gam.fit = gam(monthly.TS[, 'GBP']~s(time.pts))
+monthly.gbp.fit.gam = ts(fitted(gbp.gam.fit), start = 1999, freq = 12)
+ts.plot(monthly.gbp.fit.gam,lwd=2,col="purple", ylab="GBP/USD Monthly Rate", ylim=c(0.75,2))
+lines(weekly.TS[, 'GBP'],lwd=2,col="blue")
+
+```
+*Response: Comparing Trend Estimation using weekly vs Monthly Data*
+The spline fits for weekly vs monthly are roughly identical for both currencies. Both currencies peaked sometime in 2009 and have been decreasing since, but GBP saw much steeper declines.
+
+
+**1d.** Take the 1st order difference of the time series weekly vs monthly data. Plot the ACF plots and compare. How do the difference time series for weekly and monthly data compare in terms of stationarity? How do the difference time series for the two currencies compare in terms of serial dependence and stationarity?
+
+```{r differenced acf analysis}
+# Weekly Diff
+diff.weekly.eur = diff(weekly.TS[, 'EUR'])
+diff.weekly.gbp = diff(weekly.TS[, 'GBP'])
+acf(diff.weekly.eur, lag=52, lag.max = 52)
+acf(diff.weekly.gbp, lag=52, lag.max = 52)
+
+
+# Monthly Diff
+diff.monthly.eur = diff(monthly.TS[, 'EUR'])
+diff.monthly.gbp = diff(monthly.TS[, 'GBP'])
+acf(diff.monthly.eur, lag=12, lag.max = 12)
+acf(diff.monthly.gbp, lag=12, lag.max = 12)
+
+```
+
+*Response: Exploratory Analysis of 1st Order Difference Data*
+The first 2 lags are significant for all difference time series, but otherwise they are stationary.
+
+# Question 2. ARIMA Fitting and Forecasting: Weekly Data Analysis (23 points)
+
+**2a.** Divide the data into training and testing data set, where the training data exclude the last eight weeks of data (November and December 2020) with the testing data including the last eight weeks of data. For both currency exchange rates and using the training datasets, use the iterative model to fit an ARIMA(p,d,q) model with max AR and MA orders of 8,  and a differencing order of 1 or 2. Display the summary of the final model fit. Compare statistical significance of the coefficients. Would a lower order model be suggested based on the statistical significance of the coefficients?
+
+*Analyzing weekly data with ARIMA model fitting*
+```{r weekly arima fitting}
+n = length(weekly.TS[,'EUR'])-8
+max.order = 9
+p=c(1:max.order)-1; q=c(1:max.order)-1
+aic=matrix(0,max.order,max.order)
+
+# EUR/USD Weekly
+test.eur.weekly = tail(weekly.TS[,'EUR'], n=8)
+train.eur.weekly = weekly.TS[1:n,'EUR']
+
+# d=1
+# for (i in 1:max.order){
+#   for(j in 1:max.order){
+#     mod.ij = arima(train.eur.weekly, order=c(p[i], d, q[j]), method='ML')
+#     aic[i,j] = mod.ij$aic-2*(p[i]+q[j]+1)+2*(p[i]+q[j]+1)*n/(n-p[i]-q[j]-2)
+#   }
+# }
+# Best for EUR/USD is: AICC=-6728.756 with order p=1,d=1,q=2
+final.eur.arima = arima(train.eur.weekly, order=c(1,1,2), method='ML')
+final.eur.arima
+
+
+# GBP/USD Weekly
+test.gbp.weekly = tail(weekly.TS[,'GBP'], n=8)
+train.gbp.weekly = weekly.TS[1:n,'GBP']
+
+# d=2
+# for (i in 1:max.order){
+#   for(j in 1:max.order){
+#     mod.ij = arima(train.gbp.weekly, order=c(p[i], d, q[j]), method='ML')
+#     aic[i,j] = mod.ij$aic-2*(p[i]+q[j]+1)+2*(p[i]+q[j]+1)*n/(n-p[i]-q[j]-2)
+#   }
+# }
+# Best for GBP/USD is: AICC=-6154.025 with order p=3,d=2,q=5
+final.gbp.arima = arima(train.gbp.weekly, order=c(3,2,5), method='ML')
+final.gbp.arima
+
+```
+
+*Response: Analysis of the ARIMA Fit for the Weekly Data*
+The best fitting ARIMA for the EUR/USD weekly data is p=1, d=1, q=2.
+The best fitting ARIMA for the GBP/USD weekly data is p=3, d=2, q=5.
+
+
+```{r weekly T and p values}
+## p-value function for the z-test taking as input the test statistic
+pvalue.coef <- function(tv) {
+  2 * (1 - pnorm(abs(tv)))
+}
+
+tv.eur.weekly <-as.numeric(final.eur.arima$coef)/as.numeric(sqrt(diag(final.eur.arima$var.coef)))
+tv.gbp.weekly <-as.numeric(final.gbp.arima$coef)/as.numeric(sqrt(diag(final.gbp.arima$var.coef)))
+
+## Apply the pvalue.coef function
+pvalues.eur.weekly <- sapply(tv.eur.weekly, pvalue.coef)
+pvalues.gbp.weekly <- sapply(tv.gbp.weekly, pvalue.coef)
+
+pvalues.eur.weekly
+pvalues.gbp.weekly
+```
+
+*Response: Statistical Significance*
+The EUR model's coefficients are all significant, with p-values less than 0.05. For the GBP model, only the AR2, MA2, MA3 are statistically significant.
+
+**2b.** Evaluate the model residuals using the ACF and PACF plots, the residual plot and residuals' histogram as well as hypothesis testing for serial correlation for the selected models in (2a) for the two currencies.  Does the model fit the time series data? Compare the model fit for the two currency exchange rates.
+
+```{r weekly model residuals}
+# EUR/USD
+arima.pred = train.eur.weekly - final.eur.arima$residuals
+acf(arima.pred, lag.max=52)
+pacf(arima.pred, lag.max=52)
+plot(arima.pred, main="EUR/USD ARIMA", col="red")
+lines(train.eur.weekly, col="green")
+plot(final.eur.arima$residuals, main="EUR/USD Residuals")
+hist(final.eur.arima$residuals, main="EUR/USD Residuals Hist")
+
+# GBP/USD
+arima.pred = train.gbp.weekly - final.gbp.arima$residuals
+acf(arima.pred, lag.max=52)
+pacf(arima.pred, lag.max=52)
+plot(arima.pred, main="GBP/USD ARIMA", col="red")
+lines(train.gbp.weekly, col="green")
+plot(final.gbp.arima$residuals, main="GBP/USD Residuals")
+hist(final.gbp.arima$residuals, main="GBP/USD Residuals Hist")
+
+```
+
+*Response: Residual Analysis*
+
+**2c.* For each currency exchange, apply the model identified in (2a) and forecast the last eight weeks of data. Plot the predicted data to compare the predicted values to the actual observed ones. Include 90% confidence intervals for the forecasts in the corresponding plots.
+
+```{r weekly predicted data}
+
+
+```
+
+
+**2d.** Calculate Mean Absolute Percentage Error (MAPE) and Precision Measure (PM). How many observations are within the prediction bands?  Compare the accuracy of the predictions for the two time series using these two measures. 
+
+```{r weekly mape and pm stats}
+
+```
+
+*Response: Prediction Accuracy*
+
+
+# Question 3. ARIMA Fitting: Monthly Data Analysis (17 points)
+
+**3a.** Divide the data into training and testing data set, where the training data exclude the last two months of data (November and December 2020) with the testing data including the last two months.  For both currency exchange rates and using the training datasets, use the iterative model to fit an ARIMA(p,d,q) model with max AR and MA orders of 8,  and a differencing order of 1 or 2. Display the summary of the final model fit. Compare statistical significance of the coefficients. Compare the order selection from using monthly versus weekly data for each of the two currencies.
+
+```{r monthly arima fitting}
+
+
+
+```
+
+```{r monthly T and p values}
+
+
+```
+
+*Response: Analysis of the ARIMA Fit for the Weekly and Monthly Data*
+
+*Response: Monthly vs Weekly Data*
+
+**3b.** For each currency exchange, apply the model identified in (3a) and forecast the last two months of data.  Plot the predicted data to compare the predicted values to the actual observed ones. Include 90% confidence intervals for the forecasts in the corresponding plots. 
+
+```{r monthly predicted data}
+
+```
+
+**3c.** Calculate Mean Absolute Percentage Error (MAPE) and Precision Measure (PM). How many observations are within the prediction bands?  Compare the accuracy of the predictions for the two time series using these two measures. 
+
+```{r monthly mape and pe stats}
+
+```
+
+*Response: Predictions*
+
+# Question 4.  Weekly vs Monthly Forecasting  (5 points)
+
+Compare the forecasts based on the weekly versus monthly data. Overlay the forecast into one single plot for each of the two currency exchange rates. What can you say about using weekly versus monthly data?
+
+```{r weekly vs monthly forecasting}
+
+
+
+```
+
+*Response: Prediction Comparison*
+
+# Question 5. Reflection on ARIMA (5 points)
+
+Considering your understanding of the ARIMA model in general as well as what your understanding of the behavior of the currency exchange data based on the completion of the above questions, how would you personally regard the effectiveness of ARIMA modelling? Where would it be appropriate to use it for forecasting and where would you recommend against? What are some specific points of caution one would need to consider when considering using it?
+
+*Response: Reflection on ARIMA*
+

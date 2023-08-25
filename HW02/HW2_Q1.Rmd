@@ -1,0 +1,221 @@
+---
+title: "ISYE 6402 Homework 2 Q1"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+# Background
+
+In this problem, we will study fluctuations in currency exchange rate over time.
+
+File `EURUSDCurrency.csv` download contains the daily exchange rate of USD/EUR from January 1999 through December 31st 2020. We will aggregate the data on a weekly basis, by taking the average rate within each week. The time series of interest is the weekly currency exchange. We will analyze this time series and its first order difference.
+
+# Instructions on reading the data
+
+To read the data in `R`, save the file in your working directory (make sure you have changed the directory if different from the R working directory) and read the data using the `R` function `read.csv()`
+
+```{r read data}
+
+fpath <- "EURUSDCurrency.csv"
+df <- read.csv(fpath, head = TRUE)
+
+```
+
+Here we upload the libraries needed the this data analysis:
+
+```{r library}
+
+library(mgcv)
+library(lubridate)
+library(dplyr)
+
+```
+
+To prepare the data, run the following code snippet. First, aggregate by week:
+
+```{r clean data}
+
+df$date <- as.Date(df$Date, format='%m/%d/%Y')
+df$week <- floor_date(df$date, "week")
+df$eur <- df$EUR
+
+df <- df[, c("week", "eur")]
+
+```
+
+We now form the weekly aggregated time series to use for data exploration! Please note that we will analyze the weekly aggregated data not the original (daily) data. 
+
+```{r aggregate data}
+
+agg <- aggregate(x = df$eur, by = list(df$week), FUN = mean)
+colnames(agg) <- c("week", "eur")
+
+price <- ts(agg$eur, start = 1999, freq = 52)
+
+```
+
+#### Please use the `price` series to code and answer the following questions. ####
+
+
+# Question 1a: Exploratory Data Analysis 
+
+Before exploring the data, can you infer the data features from what you know about the USD-EUR currency exchange? Next plot the Time Series and ACF plots of the weekly data. Comment on the main features, and identify what (if any) assumptions of stationarity are violated.
+
+Which type of model do you think will fit the data better: the trend or seasonality fitting model? Provide details for your response.
+
+*Response: General Insights on the USD-EUR Currency Rate*
+
+Prior to EDA: There could be seasonal/cyclical patterns in the exchange rate, ie more demand for EUR vs USD based on tourism seasons. There might not be a general upward/downward trend because the exchange rate between currencies should be relatively stable (at least with the two we are comparing).
+
+```{r general insights}
+plot(price)
+acf(price, lag.max = 52*22)
+```
+
+*Response: General Insights from the Graphical Analysis*
+Mean does not appear constant over time and the ACF plot indicates significant autocorrelation. These both violate stationarity assumptions.
+
+There's no seasonal component in the ACF plot. A trend model would be better as it would capture the overall "shape" of the time series (the week-to-week trend).
+
+
+# Question 1b: Trend Estimation
+
+Fit the following trend estimation models:
+
+- Moving Average
+
+- Parametric Quadratic Polynomial
+
+- Local Polynomial
+
+- Splines Smoothing
+
+Overlay the fitted values on the original time series. Plot the residuals with respect to time for each model. Plot the ACF of the residuals for each model also. Comment on the four models fit and on the appropriateness of the stationarity assumption of the residuals.
+
+```{r trend estimation models}
+time.pts = c(1:length(price))
+time.pts = c(time.pts - min(time.pts))/max(time.pts)
+
+# Moving Average
+mav.fit = ksmooth(time.pts, price, kernel="box")
+price.fit.mav = ts(mav.fit$y, start = 1999, freq = 52)
+
+# Parametric Quadratic Polynomial
+x1 = time.pts
+x2 = time.pts^2
+lm.fit = lm(price~x1+x2)
+price.fit.lm = ts(fitted(lm.fit), start = 1999, freq = 52)
+
+# Local Polynomial
+loc.fit = loess(price~time.pts)
+price.fit.loc = ts(fitted(loc.fit), start = 1999, freq = 52)
+
+# Splines Smoothing
+gam.fit = gam(price~s(time.pts))
+price.fit.gam = ts(fitted(gam.fit), start = 1999, freq = 52)
+
+
+# Fitted and Original
+ts.plot(price, ylab="USD/EUR Rate")
+lines(price.fit.mav,lwd=2,col="purple")
+lines(price.fit.lm,lwd=2,col="green")
+lines(price.fit.loc,lwd=2,col="red")
+lines(price.fit.gam,lwd=2,col="brown")
+abline(price.fit.mav[1],0,lwd=2,col="blue")
+
+# Residuals
+diff.fit.mav = ts(price - mav.fit$y, start = 1999, freq = 52)
+diff.fit.lm = ts(price - fitted(lm.fit), start = 1999, freq = 52)
+diff.fit.loc = ts(price - fitted(loc.fit), start = 1999, freq = 52)
+diff.fit.gam = ts(price - fitted(gam.fit), start = 1999, freq = 52)
+
+ts.plot(diff.fit.mav,lwd=2,col="purple", ylab="Residual Process")
+lines(diff.fit.lm,lwd=2,col="green")
+lines(diff.fit.loc,lwd=2,col="red")
+lines(diff.fit.gam,lwd=2,col="brown")
+```
+
+*Response: Comparison of the fitted trend models:*
+Three of the four models capture a parabolic trend - the moving average, local polynomial, and parametric quadratic polynomial. The best fitting model is the splines - its residuals have the smallest amplitude. It's worth noting this is also the model most likely to overfit the data.
+
+```{r stationarity}
+# ACF Plots
+acf(diff.fit.mav, lag.max = 52*22)
+acf(diff.fit.lm, lag.max = 52*22)
+acf(diff.fit.loc, lag.max = 52*22)
+acf(diff.fit.gam, lag.max = 52*22)
+```
+
+*Response: Appropriateness of the trend model for stationarity*
+The ACF values after lag[0] are significant in all four models. Stationarity is not a fitting assumption for this series.
+
+# Question 1c: Differenced Data Modeling
+
+Now plot the difference time series and its ACF plot. Apply the four trend models in Question 1b to the differenced time series. What can you conclude about the difference data in terms of stationarity? Which model would you recommend to apply (trend removal via fitting trend vs differencing) such that to obtain a stationary process?
+
+**Hint:** When TS data are differenced, the resulting data set will have an NA in the first data element due to the differencing.
+
+```{r differenced data}
+diff.price = diff(price)
+time.pts = c(2:length(price))
+time.pts = c(time.pts - min(time.pts))/max(time.pts)
+
+# Moving Average
+mav.fit = ksmooth(time.pts, diff.price, kernel="box")
+price.fit.mav = ts(mav.fit$y, start = 1999, freq = 52)
+
+# Parametric Quadratic Polynomial
+x1 = time.pts
+x2 = time.pts^2
+lm.fit = lm(diff.price~x1+x2)
+price.fit.lm = ts(fitted(lm.fit), start = 1999, freq = 52)
+
+# Local Polynomial
+loc.fit = loess(diff.price~time.pts)
+price.fit.loc = ts(fitted(loc.fit), start = 1999, freq = 52)
+
+# Splines Smoothing
+gam.fit = gam(diff.price~s(time.pts))
+price.fit.gam = ts(fitted(gam.fit), start = 1999, freq = 52)
+
+
+# Fitted and Original
+ts.plot(diff.price, ylab="Differenced USD/EUR Rate")
+lines(price.fit.mav,lwd=2,col="purple")
+lines(price.fit.lm,lwd=2,col="green")
+lines(price.fit.loc,lwd=2,col="red")
+lines(price.fit.gam,lwd=2,col="brown")
+abline(price.fit.mav[1],0,lwd=2,col="blue")
+
+# Residuals
+diff.fit.mav = ts(diff.price - mav.fit$y, start = 1999, freq = 52)
+diff.fit.lm = ts(diff.price - fitted(lm.fit), start = 1999, freq = 52)
+diff.fit.loc = ts(diff.price - fitted(loc.fit), start = 1999, freq = 52)
+diff.fit.gam = ts(diff.price - fitted(gam.fit), start = 1999, freq = 52)
+
+ts.plot(diff.fit.mav,lwd=2,col="purple", ylab="Residual Process")
+lines(diff.fit.lm,lwd=2,col="green")
+lines(diff.fit.loc,lwd=2,col="red")
+lines(diff.fit.gam,lwd=2,col="brown")
+
+# ACF Plots
+acf(diff.fit.mav, lag.max = 52*22)
+acf(diff.fit.lm, lag.max = 52*22)
+acf(diff.fit.loc, lag.max = 52*22)
+acf(diff.fit.gam, lag.max = 52*22)
+```
+*Response: Comments about the stationarity of the difference data:*
+The ACF values quickly decrease to zero and stay within the bands, indicating a stationary process. I would recommend using the difference model vs trend removal so we can obtain stationarity.

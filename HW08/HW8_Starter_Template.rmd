@@ -1,0 +1,215 @@
+---
+title: "ISYE 6402 Homework 8"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+# Background
+
+We have explored how various U.S. economic indicators are related to each other, which is a classic application for the VAR modeling. In this problem, we will study the inter-dependence and Granger causality between various economic indicators.
+
+# Instructions on reading the data
+
+To read the data in `R`, save the file in your working directory (make sure you have changed the directory if different from the R working directory) and read the data using the `R` function `read.csv()`
+
+```{r read data}
+
+# Read the monthly and quarterly data
+fname <- file.choose()
+data <- read.csv(fname)
+fname2 <- file.choose()
+data2 <- read.csv(fname2)
+date.quarter <- as.Date(data[,1],"%m/%d/%Y")
+date.month <- as.Date(data2[,1],"%m/%d/%Y")
+
+```
+
+Here are the libraries you will need:
+
+```{r library}
+
+library(data.table)
+library(vars)
+library(xts)
+library(mgcv)
+library(stats)
+library(tseries)
+library(aod)
+
+```
+
+# Question 1: Univariate Analysis
+
+## Question 1a
+
+Plot the time series of all indicators for comparison and discuss whether you find any similarities in terms of trend or other features. Plot also the 1st order difference plots and the corresponding ACF plots. Interpret in terms of stationarity and volatility.
+
+Keep in mind, 2 variables have monthly data, while three have quarterly data. You will need to standardise all into quarterly data time series in order to effectively answer all questions below.
+
+```{r question 1a}
+# transform into time series
+gdp.ts <- xts(data$GDP, date.quarter)
+expgs.ts <- xts(data$EXPGS, date.quarter)
+imgpgsc.ts <- xts(data$IMPGSC1, date.quarter)
+unrate.ts <- xts(data2$UNRATE, date.month)
+pce.ts <- xts(data2$PCE, date.month)
+
+# merge into multivariate time series
+ts.merge <- merge(gdp.ts, expgs.ts, join = 'inner')
+ts.merge <- merge(ts.merge, imgpgsc.ts, join = 'inner')
+ts.merge <- merge(ts.merge, unrate.ts, join = 'inner')
+ts.merge <- merge(ts.merge, pce.ts, join = 'inner')
+colnames(ts.merge) <- c("tsgdp", "tsexpgs", "tsimgpsc", "tsunrate", "tspce")
+```
+
+*Response*
+
+## Question 1b
+
+Using the original, undifferenced data, divide the GDP data into training data including the data for years 1959 to 2019 with the last two quarters being the testing data. Fit the trend using the splines regression to the GDP training time series. Then, apply ARMA to the residuals obtained from this splines fitting. Use max order of 6. Evaluate goodness of fit for the ARMA model. Forecast the first two quarters of 2020 (testing data) and compare to the observed values. Discuss why there are (or not!) significant differences between predicted vs observed. To do this, you should also evaluate the prediction intervals with a 95% confidence level.
+
+
+```{r question 1b}
+
+```
+
+*Response*
+
+## Question 1c 
+
+Perform a similar analysis as in (1b) but this time applying ARIMA to the GDP time series training dataset. Compare the forecast and discuss why these are different or similar from the testing data. Assume p,q belong to [0,5] and d belongs to [0,1]. Also evaluate the prediction intervals with a 95% confidence level, and compare the results of the forecast with the analysis in Question 1b.
+
+```{r question 1c}
+
+```
+
+*Response*
+
+# Question 2: Multivariate Analysis using VAR modeling
+
+For this question, divide the quarterly data into training data (excluding the first two quarters of 2020) and testing data (including the two quarters). You will apply the modeling to the training data, and we will forecast the first two quarters of 2020.
+
+## Question 2a
+
+Apply the VAR model to the multivariate time series including all five economic indicators observed quarterly. (Note that you will apply VAR to the training data.) Identify the VAR order using both AIC and BIC and compare. If the selected order using AIC is larger than the selected order than selected using BIC, apply the Wald test to evaluate whether a smaller order than the one selected with AIC would be a better choice, meaning the smaller order model would perform similarly than the larger order model. Interpret the order selection.
+
+This can be done by following the below substeps:-
+1)Combine the variables into a multivariate dataset
+2)select/display var orders and isolate models using AIC and BIC orders 
+3)Isolate coefficients and covariances from the AIC model
+4)applying the Wald test to the values obtained from the AIC model, but would not be present in the BIC model. You can run a single Wald test for each variable, with all the lagged coefficients for that particular variable, in all resulting in 5 wald tests.
+
+
+```{r question 2a}
+
+```
+
+*Response*
+
+## Question 2b
+
+Based on the analysis in 2a, select the VAR order using BIC and fit that model. Print out the model summary and comment on the statistical significance of the coefficients. Apply a model selection analysis using stepwise regression to select the models for each individual time series. What do you conclude from this model selection? Apply the restrict() command in R to restrict the model of order. How do the restricted models compare?
+
+Follow the below steps to implement this:
+1)Analyze the coefficients of the unrestricted model.
+2)Then treat each of the series separately and do a stepwise regression by apply lm() and step() (in the backward direction with 3 steps) functions to each of the component time series to examine the coefficients
+3)The stepwise regressions will return three separate models. Analyze if the same coefficients are significant in the overall VAR versus each of the stepwise models. Discuss.
+4)Then build a model using restrict and see which predictors were significant in the restricted VAR model.
+
+```{r question 2b}
+
+```
+
+*Response*
+
+## Question 2c
+
+Evaluate the goodness of fit for the restricted BIC model using the multivariate ARCH test, the Jarque-Bera test and the Portmanteau test. State which assumptions are satisfied, and which are violated. (Note: While we evaluate the residuals for the normality assumption, we do not necessarily assume normality of the data. We use the normality assumption if we use the t-test to evaluate statistical significance.)
+
+```{r question 2c}
+
+```
+
+*Response*
+
+## Question 2d
+
+Using the VAR model with the order selected using BIC, forecast the first two quarters of 2020 using the unrestricted and restricted VAR. Include 95% confidence intervals. Compare the predictions to the observed data. (You don't need to plot them (but can if you'd like).  Using mean absolute percentage error and the precision measure, compare the predictions for GDP derived from the univariate analysis (Question 1) and this multivariate analysis. Discuss on the differences or similarities.
+
+
+```{r question 2d}
+
+```
+
+*Response*
+
+## Question 2e
+
+Perform a Granger Causality analysis using Wald test to evaluate whether any of the economic indicators lead GDP. Would any of the indicators help in predicting or explaining GDP for next quarters? Provide your interpretation based on the Granger causality as well as for forecasting comparison in (2d).For this, use the unrestricted bic model from Question 2a.
+
+```{r question 2e}
+
+```
+
+*Response*
+
+# Question 3
+
+For this question, consider the training data to include the time values up to December 2017 and the testing data to include the first two quarters of 2018.
+
+## Question 3a
+
+Apply the VAR modeling approach with the order selected using the BIC approach giving the unrestricted VAR model. Apply a model selection analysis using stepwise regression to select the models for each individual time series. Based on the selected models, form the restricted VAR model, much like what was presented in the Moose R example code. Compare these two models in terms of coefficients and their statistical significance with the models derived in Question 2.
+
+
+Follow the below steps to implement this:
+1)Analyze the coefficients of the unrestricted model.
+2)Then treat each of the series separately and do a stepwise regression by apply lm() and step()(in the backward direction with 3 steps) functions to each of the component time series to examine the coefficients
+3)The stepwise regressions will return three separate models. Analyze if the same coefficients are significant in the overall VAR versus each of the stepwise models. Discuss.
+4)Then build a model using restrict and see which predictors were significant in the restricted VAR model.
+
+```{r question 3a}
+
+```
+
+*Response*
+
+## Question 3b
+
+Forecast the first two quarters of 2019 using the unrestricted and restricted VAR models derived in (3a). Include 95% confidence intervals. Compare the predictions to the observed data using mean absolute percentage error and the precision measure for GDP. Compare the predictions to those derived in (2d). Comment on the accuracy of the predictions.
+
+```{r question 3b}
+
+```
+
+*Response*
+
+## Question 3c
+
+Perform a Granger Causality analysis using Wald test to evaluate whether any of the economic indicators lead GDP. Would any of the indicators help in predicting or explaining GDP for next quarters? Provide your interpretation based on the Granger causality as well as for forecasting comparison in (3b). Compare this analysis with the findings in (2e). For this question, use the unrestricted VAR model from Question 3a.
+
+```{r question 3c}
+
+```
+
+*Response*
+
+
+# Question 4: Reflection
+
+From what you encountered above and your conceptual understanding of VAR modelling, reflect on the relative strengths and weaknesses of the modelling approach. Particularly, you will need to put this analysis into the perspective of the results you found and any relevant economic events you might be potentially able to link them to.
+
+
+*Response*
